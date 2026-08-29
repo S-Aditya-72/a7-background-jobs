@@ -3,6 +3,9 @@ import inngest
 from inngest.fast_api import serve
 import os
 from datetime import timedelta
+import uuid
+from fastapi.responses import JSONResponse
+from fastapi import Request
 
 os.environ["INNGEST_DEV"] = "1"
 
@@ -20,11 +23,67 @@ async def say_hello(ctx: inngest.Context):
 
 
 app = FastAPI()
-
+REPORTS = {}
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-serve(app, inngest_client, [say_hello])
+@inngest_client.create_function(
+    fn_id="make-report",
+    trigger=inngest.TriggerEvent(event="report/requested"),
+)
+async def make_report(ctx: inngest.Context):
+    
+    report_id = ctx.event.data["id"]
+    topic = ctx.event.data["topic"]
+
+
+    await ctx.step.sleep("do-the-slow-work", timedelta(seconds=8))
+
+    
+    def build():
+        REPORTS[report_id]["status"] = "done"
+        REPORTS[report_id]["result"] = f"A detailed report about {topic}!"
+        return REPORTS[report_id]
+
+    await ctx.step.run("build-report", build)
+    return "Report finished!"
+
+
+
+@app.post("/reports", status_code=202)
+async def create_report(request_data: dict):
+
+    report_id = str(uuid.uuid4())
+    topic = request_data.get("topic", "unknown")
+
+    REPORTS[report_id] = {
+        "id": report_id,
+        "topic": topic,
+        "status": "pending"
+    }
+
+    
+    await inngest_client.send(
+        inngest.Event(
+            name="report/requested",
+            data={"id": report_id, "topic": topic}
+        )
+    )
+
+    
+    return JSONResponse(status_code=202, content={"id": report_id, "status": "pending"})
+
+
+@app.get("/reports/{report_id}")
+def get_report(report_id: str):
+    
+    if report_id not in REPORTS:
+        return JSONResponse(status_code=404, content={"error": "Report not found"})
+    
+    
+    return REPORTS[report_id]
+
+serve(app, inngest_client, [say_hello, make_report])
