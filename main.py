@@ -22,6 +22,22 @@ async def say_hello(ctx: inngest.Context):
     return "Hello from the background!"
 
 
+@inngest_client.create_function(
+    fn_id="heartbeat",
+    trigger=inngest.TriggerCron(cron="* * * * *"), 
+)
+async def heartbeat(ctx: inngest.Context):
+    
+    pending_count = sum(1 for r in REPORTS.values() if r.get("status") == "pending")
+    done_count = sum(1 for r in REPORTS.values() if r.get("status") == "done")
+    
+    
+    summary = f"Heartbeat: {pending_count} pending, {done_count} done."
+    print(summary)
+    
+    
+    return summary
+
 app = FastAPI()
 REPORTS = {}
 
@@ -88,4 +104,4 @@ def get_report(report_id: str):
     
     return REPORTS[report_id]
 
-serve(app, inngest_client, [say_hello, make_report])
+serve(app, inngest_client, [say_hello, make_report, heartbeat])
