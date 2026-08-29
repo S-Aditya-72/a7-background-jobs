@@ -1,0 +1,1 @@
+A wrong input (like a missing topic) must be rejected at the door with a 400 error, while temporary errors (like a broken database) happen in the background and deserve a retry.
